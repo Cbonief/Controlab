@@ -49,6 +49,12 @@ def get_custom_controllers():
         file.close()
 
         exec(custom_code, {'Controller': Controller, 'AuxiliaryDictionary': AuxiliaryDictionary})
+        editable_variables = {}
+        variables = vars(AuxiliaryDictionary['class']())
+        for var in variables:
+            if var.find('_') != 0:
+                editable_variables[var] = variables[var]
+        print(editable_variables)
         custom_controllers.append({
             'name': AuxiliaryDictionary['class'].__name__,
             'code': custom_code,
@@ -64,16 +70,16 @@ class DiscretePIDController(Controller):
         self.Kp = Kp
         self.Ki = Ki
         self.Kv = Kv
-        self.error = 0
-        self.integral_error = 0
+        self._error = 0
+        self._integral_error = 0
 
     def calculate_action(self, readings, time, control_point=0.7):
         reading = readings[-1]
-        last_error = self.error
-        self.error = (control_point - reading)
-        self.integral_error += self.error * self.sampling_rate
-        error_derivative = (self.error - last_error) / self.sampling_rate
-        control_action = max(self.Kp * self.error + error_derivative * self.Kv + self.integral_error * self.Ki, 0)
+        last_error = self._error
+        self._error = (control_point - reading)
+        self._integral_error += self._error * self.sampling_rate
+        error_derivative = (self._error - last_error) / self.sampling_rate
+        control_action = max(self.Kp * self._error + error_derivative * self.Kv + self._integral_error * self.Ki, 0)
         return min(1, control_action)
 
 

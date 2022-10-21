@@ -291,19 +291,3 @@ def get_closest_index(myList, myNumber):
         return pos
     else:
         return pos - 1
-
-common_anode_encoding = [
-    [1, 1, 1, 1, 1, 1, 0],
-    [0, 1, 1, 0, 0, 0, 0],
-    [1, 1, 0, 1, 1, 0, 1],
-    [1, 1, 1, 1, 0, 0, 1],
-    [0, 1, 1, 0, 0, 1, 1],
-    [1, 0, 1, 1, 0, 1, 1],
-    [1, 0, 1, 1, 1, 1, 1],
-    [1, 1, 1, 0, 0, 0, 0],
-    [1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 0, 0, 1]
-]
-
-def get_seven_seg_encoding(number):
-    return common_anode_encoding[number]
