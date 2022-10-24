@@ -1,13 +1,17 @@
-# Bibliotecas externas
+# Bibliotecas externasz
+import csv
 import os  # Biblioteca para direcionamento do endereço dos arquivos.
 from bisect import bisect_left
 import threading
+import easygui as g
+import openpyxl
 
 import pygame  # Biblioteca para a janela do jogo e evento de mouse.
 import pygame.freetype  # Sub biblioteca para a fonte.
 
 # Meu código
-from matplotlib import pyplot as plt
+import openpyxl
+from openpyxl.chart import Reference, ScatterChart, Series
 
 from GUI import widgets as gui
 
@@ -67,13 +71,12 @@ class Application:
             'restart': gui.PushButton([195+110, 100-45-10], [45, 45], [self.sprites['restart_idle'], self.sprites['restart_pressed']]),
             'pause': gui.PushButton([195+55, 100-45-10], [45, 45], [self.sprites['stop_idle'], self.sprites['stop_pressed']]),
             'save_data': gui.PushButton([195+165, 100-45-10], [45, 45], [self.sprites['save_idle'], self.sprites['save_pressed']]),
-            'save_controller': gui.PushButton([130, 100], [30, 30], [self.sprites['save_idle'], self.sprites['save_pressed']]),
         }
         buttons['run_simulation'].connect_function(self.start_simulation)
         buttons['play'].connect_function(self.play_simulation)
-        buttons['save_controller'].connect_function(self.save_controller)
         buttons['pause'].connect_function(self.pause_simulation)
         buttons['restart'].connect_function(self.reset)
+        buttons['save_data'].connect_function(self.save_simulation_results)
 
         buttons['pause'].disable()
 
@@ -90,15 +93,28 @@ class Application:
             'controller_select': gui.DropdownMenu([50, 140], [80, 30], [self.sprites['menu_item_idle'], self.sprites['menu_item_hover']], border=gui.Border(1, (0, 0, 0)), parent=None),
         }
 
+        text_edits = {}
+
         self.custom_controllers = get_custom_controllers()
 
-        self.custom_controller_id = None
+        self.custom_controller_id = 0
         for controller in self.custom_controllers:
             dropdown_menu['controller_select'].add_item(controller['name'])
+            current_y = 100
+            for name in controller['variables']:
+                default_value = str(controller['variables'][name])
+                new_panel = gui.Panel([450, current_y], [35, 30], self.sprites['panel'], border=gui.Border(1, gui.Color.BLACK),text=gui.Text(name.capitalize(), 16, gui.Color.BLACK))
+                new_edit = gui.TextEdit([495, current_y], [60, 30], self.sprites['panel'], border=gui.Border(1, gui.Color.BLACK), text=gui.Text(default_value, 16, gui.Color.BLACK))
+                if current_y > 100:
+                    new_panel.disable()
+                    new_edit.disable()
+                panels[name.capitalize()+controller['name']] = new_panel
+                text_edits[name.capitalize()+controller['name']] = new_edit
+                current_y += 45
 
         dropdown_menu['controller_select'].connect_on_item_select(self.change_custom_controller)
 
-        self.widgets = gui.Window(buttons, panels, {}, progress_bars, dropdown_menu)
+        self.widgets = gui.Window(buttons, panels, text_edits, progress_bars, dropdown_menu)
 
     def run(self):
         timer = pygame.time.Clock()
@@ -122,8 +138,13 @@ class Application:
 
     def start_simulation(self):
         if not self.simulation_running:
-            if self.custom_controller_id >= 0:
-                self.controller = self.custom_controllers[self.custom_controller_id]['class']()
+            args = {}
+            for name in self.custom_controllers[self.custom_controller_id]['variables']:
+                key = name.capitalize()+self.custom_controllers[self.custom_controller_id]['name']
+                value = self.widgets.text_edits[key].get_text_as_float()
+                args[name] = value
+
+            self.controller = self.custom_controllers[self.custom_controller_id]['class'](**args)
 
             simulation_thread = threading.Thread(target=self.tank.simulate, args=(30, 0.001, 0, self.controller, 0.7,
                      self.on_simulation_finished, None,
@@ -172,16 +193,63 @@ class Application:
         self.widgets.buttons['play'].enable()
         self.widgets.buttons['pause'].disable()
 
-    # TODO
-    def save_controller(self):
-        pass
-
     #TODO
     def save_simulation_results(self):
-        pass
+        if self.simulation_finished:
+            file = g.filesavebox('Save Simulation Results')
+            self.save_data(file)
+
+    def save_thread(self, file):
+        data_size = len(self.simulation_results.time)
+        headers = ['Time', 'Height', 'Error', 'Action']
+        units = ['', ' (m)', ' (m)', '']
+        max_time = self.simulation_results.time[data_size-1]
+
+        wb = openpyxl.Workbook()
+        sheet = wb.active
+        sheet.append(headers)
+
+        for i in range(0, data_size):
+            sheet.append([
+                self.simulation_results.time[i], self.simulation_results.height[i], self.simulation_results.error[i],
+                self.simulation_results.action[i]
+            ])
+        for i in range(1, 4):
+            header = headers[i]
+            chart = ScatterChart()
+            chart.title = header + ' x Time'
+            chart.style = 13
+            chart.x_axis.title = 'Time (s)'
+            chart.y_axis.title = header + units[i]
+            chart.x_axis.scaling.min = 0
+            chart.x_axis.scaling.max = max_time
+
+            x_values = Reference(sheet, min_col=1, min_row=2, max_row=data_size)
+            y_values = Reference(sheet, min_col=i+1, min_row=2, max_row=data_size)
+            series = Series(y_values, x_values)
+            chart.series.append(series)
+
+            row = 2+15*(i-1)
+            sheet.add_chart(chart, 'F'+str(row))
+
+        wb.save(file)
+
+
+    def save_data(self, file):
+        thread = threading.Thread(target=self.save_thread, args=(file,))
+        thread.start()
 
     def change_custom_controller(self, item, item_id):
         self.custom_controller_id = item_id
+        for index, controller in enumerate(self.custom_controllers):
+            for name in controller['variables']:
+                key = name.capitalize()+controller['name']
+                if index != item_id:
+                    self.widgets.text_edits[key].disable()
+                    self.widgets.panels[key].disable()
+                else:
+                    self.widgets.text_edits[key].enable()
+                    self.widgets.panels[key].enable()
 
     def event_handler(self):
         mouse_pos = pygame.mouse.get_pos()

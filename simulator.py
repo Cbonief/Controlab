@@ -28,8 +28,8 @@ class SimulationResults:
 
 class Controller(ABC):
 
-    def __init__(self, sampling_rate=0.1):
-        self.sampling_rate = sampling_rate
+    def __init__(self, ts=0.1):
+        self.ts = ts
 
     @abstractmethod
     def calculate_action(self, readings, time, control_point):
@@ -43,7 +43,6 @@ def get_custom_controllers():
             'class': Controller
         }
         str_path = str(file_path)
-        name = str_path.split('\\')[1]
         file = open(str_path, "r")
         custom_code = file.read()
         file.close()
@@ -54,14 +53,13 @@ def get_custom_controllers():
         for var in variables:
             if var.find('_') != 0:
                 editable_variables[var] = variables[var]
-        print(editable_variables)
         custom_controllers.append({
             'name': AuxiliaryDictionary['class'].__name__,
             'code': custom_code,
-            'class': AuxiliaryDictionary['class']
+            'class': AuxiliaryDictionary['class'],
+            'variables': editable_variables
         })
     return custom_controllers
-
 
 
 class WaterTank:
@@ -85,9 +83,6 @@ class WaterTank:
                  ):
 
         elapsed_time = 0
-
-        if controller is None:
-            controller = DiscretePIDController(0.1, 8, 1, 2)
 
         # Control Variables
         control_action = 0
@@ -122,9 +117,12 @@ class WaterTank:
             action[i] = control_action
 
             # Calculate the Control Action
-            if control_timer >= controller.sampling_rate:
-                control_timer -= controller.sampling_rate
-                control_action = controller.calculate_action(height[:i], time[:i])
+            if controller:
+                if control_timer >= controller.ts:
+                    control_timer -= controller.ts
+                    control_action = controller.calculate_action(height[:i], time[:i])
+            else:
+                control_action = 0
 
             percentage = int(100 * i / nit)
             if percentage != last_percentage:
