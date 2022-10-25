@@ -2,8 +2,6 @@ import pygame
 import pygame.freetype
 from string import ascii_letters
 
-from pygame.rect import Rect
-
 pygame.freetype.init()
 
 current_id = 0

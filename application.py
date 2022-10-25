@@ -1,18 +1,15 @@
 # Bibliotecas externasz
-import csv
 import os  # Biblioteca para direcionamento do endereço dos arquivos.
 from bisect import bisect_left
 import threading
 import easygui as g
 import openpyxl
+from openpyxl.chart import Reference, ScatterChart, Series
 
 import pygame  # Biblioteca para a janela do jogo e evento de mouse.
 import pygame.freetype  # Sub biblioteca para a fonte.
 
 # Meu código
-import openpyxl
-from openpyxl.chart import Reference, ScatterChart, Series
-
 from GUI import widgets as gui
 
 # Classe do manager do Jogo.
