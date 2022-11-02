@@ -1,5 +1,5 @@
 # Bibliotecas externasz
-import os  # Biblioteca para direcionamento do endereço dos arquivos.
+from os import path  # Biblioteca para direcionamento do endereço dos arquiv
 from bisect import bisect_left
 import threading
 import easygui as g
@@ -13,7 +13,8 @@ import pygame.freetype  # Sub biblioteca para a fonte.
 from GUI import widgets as gui
 
 # Classe do manager do Jogo.
-from simulator import WaterTank, get_custom_controllers
+from simulator import WaterTank
+from controller import get_custom_controllers, Controller
 
 
 class Application:
@@ -38,29 +39,29 @@ class Application:
         self.elapsed_time_s = 0.0
 
         self.sprites = {
-            'menu_item_idle': pygame.image.load(os.path.join("Assets/button_yellow", "button_plain.png")).convert_alpha(),
+            'menu_item_idle': pygame.image.load(path.join("Assets/button_yellow", "button_plain.png")).convert_alpha(),
             'menu_item_hover': pygame.image.load(
-                os.path.join("Assets/button_hover", "button_plain_hover.png")).convert_alpha(),
-            'run_idle': pygame.image.load(os.path.join("Assets/button_yellow", "button_arrow_top.png")).convert_alpha(),
+                path.join("Assets/button_hover", "button_plain_hover.png")).convert_alpha(),
+            'run_idle': pygame.image.load(path.join("Assets/button_yellow", "button_arrow_top.png")).convert_alpha(),
             'run_pressed': pygame.image.load(
-                os.path.join("Assets/button_hover", "button_arrow_top_hover.png")).convert_alpha(),
-            'play_idle': pygame.image.load(os.path.join("Assets/button_yellow", "button_play.png")).convert_alpha(),
-            'play_pressed': pygame.image.load(os.path.join("Assets/button_hover", "button_play_hover.png")).convert_alpha(),
-            'save_idle': pygame.image.load(os.path.join("Assets/button_yellow", "button_save.png")).convert_alpha(),
+                path.join("Assets/button_hover", "button_arrow_top_hover.png")).convert_alpha(),
+            'play_idle': pygame.image.load(path.join("Assets/button_yellow", "button_play.png")).convert_alpha(),
+            'play_pressed': pygame.image.load(path.join("Assets/button_hover", "button_play_hover.png")).convert_alpha(),
+            'save_idle': pygame.image.load(path.join("Assets/button_yellow", "button_save.png")).convert_alpha(),
             'save_pressed': pygame.image.load(
-                os.path.join("Assets/button_hover", "button_save_hover.png")).convert_alpha(),
-            'stop_idle': pygame.image.load(os.path.join("Assets/button_yellow", "button_pause.png")).convert_alpha(),
+                path.join("Assets/button_hover", "button_save_hover.png")).convert_alpha(),
+            'stop_idle': pygame.image.load(path.join("Assets/button_yellow", "button_pause.png")).convert_alpha(),
             'stop_pressed': pygame.image.load(
-                os.path.join("Assets/button_hover", "button_pause_hover.png")).convert_alpha(),
-            'restart_idle': pygame.image.load(os.path.join("Assets/button_yellow", "button_reload.png")).convert_alpha(),
+                path.join("Assets/button_hover", "button_pause_hover.png")).convert_alpha(),
+            'restart_idle': pygame.image.load(path.join("Assets/button_yellow", "button_reload.png")).convert_alpha(),
             'restart_pressed': pygame.image.load(
-                os.path.join("Assets/button_hover", "button_reload_hover.png")).convert_alpha(),
+                path.join("Assets/button_hover", "button_reload_hover.png")).convert_alpha(),
             'ok_idle': pygame.image.load(
-                os.path.join("Assets/button_yellow", "button_yes.png")).convert_alpha(),
+                path.join("Assets/button_yellow", "button_yes.png")).convert_alpha(),
             'ok_pressed': pygame.image.load(
-                os.path.join("Assets/button_hover", "button_yes_hover.png")).convert_alpha(),
+                path.join("Assets/button_hover", "button_yes_hover.png")).convert_alpha(),
             'panel': pygame.image.load(
-                os.path.join("Assets", "painel.png")).convert_alpha()
+                path.join("Assets", "painel.png")).convert_alpha()
         }
         buttons = {
             'run_simulation': gui.PushButton([195, 100-45-10], [45, 45], [self.sprites['run_idle'], self.sprites['run_pressed']]),
@@ -123,9 +124,8 @@ class Application:
             if self.simulation_finished:
                 if self.simulation_displaying:
                     self.set_time_text(get_elapsed_time_string(self.elapsed_time))
-                    self.tank_level = self.simulation_results.height[self.current_simulation_index]
-
                     self.current_simulation_index = get_closest_index(self.simulation_results.time, self.elapsed_time_s)
+                    self.tank_level = self.simulation_results.height[self.current_simulation_index]
                     self.elapsed_time += dt
                     self.elapsed_time_s += dt / 1000
             self.draw_tank()
@@ -143,13 +143,15 @@ class Application:
 
             self.controller = self.custom_controllers[self.custom_controller_id]['class'](**args)
 
-            simulation_thread = threading.Thread(target=self.tank.simulate, args=(30, 0.001, 0, self.controller, 0.7,
+            simulation_thread = threading.Thread(target=self.tank.simulate, args=(10, 0.001, 0, self.controller, 0.7,
                      self.on_simulation_finished, None,
                      self.update_progress_bar, None,
                      False,))
             simulation_thread.start()
             self.simulation_finished = False
             self.simulation_running = True
+            self.widgets.buttons['play'].enable()
+            self.widgets.buttons['pause'].disable()
 
     def play_simulation(self):
         if self.simulation_finished:
@@ -182,7 +184,6 @@ class Application:
         self.tank_level = 0.0
         self.elapsed_time = 0
         self.elapsed_time_s = 0.0
-        self.simulation_finished = False
         self.simulation_displaying = False
         self.simulation_running = False
         self.set_time_text('00:000')
@@ -230,7 +231,6 @@ class Application:
             sheet.add_chart(chart, 'F'+str(row))
 
         wb.save(file)
-
 
     def save_data(self, file):
         thread = threading.Thread(target=self.save_thread, args=(file,))
