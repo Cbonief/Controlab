@@ -113,6 +113,7 @@ class DynamicSystem(ABC):
                  returnValues=False,
                  ):
 
+        print(control_point)
         # Control Variables
         control_action = 0
         control_timer = 0
@@ -153,7 +154,7 @@ class DynamicSystem(ABC):
             if controller:
                 if control_timer >= controller.ts:
                     control_timer -= controller.ts
-                    control_action = controller.calculate_action(x[:i], time[:i])
+                    control_action = controller.calculate_action(x[:i], time[:i], control_point)
             else:
                 control_action = 0
 

@@ -4,6 +4,7 @@ from bisect import bisect_left
 import threading
 import easygui as g
 
+from openpyxl import Workbook
 from openpyxl.chart import Reference, ScatterChart, Series
 
 import pygame  # Biblioteca para a janela do jogo e evento de mouse.
@@ -17,6 +18,47 @@ from simulator import WaterTank
 from controller import get_custom_controllers, Controller
 
 
+class WaterTankWidget(gui.Widget):
+
+    def __init__(self, position, parent=None):
+        gui.Widget.__init__(self, position, parent)
+        self.tank = WaterTank()
+        self.tank_level = 0.0
+        self.action_applied = 0.0
+        self.control_point = 0.7
+
+        self.selecting_control_point = False
+        self.pressed = False
+        self.frame_counter = 0
+
+    def show(self, window, mouse_pos):
+        if self.pressed:
+            self.frame_counter += 1
+            if self.frame_counter >= 2:
+                self.selecting_control_point = True
+
+        if self.selecting_control_point:
+            self.control_point = (-mouse_pos[1] / 400.0) + (5 / 4)
+            if self.control_point > 1:
+                self.control_point = 1
+            elif self.control_point < 0:
+                self.control_point = 0
+        pygame.draw.rect(window, (0, 0, 0), pygame.Rect(300 - 100 - 2, 100 - 2, 204, 404))
+        pygame.draw.rect(window, (122, 122, 122), pygame.Rect(300-100, 100, 200, 400))
+        pygame.draw.rect(window, (0, 100, 255), pygame.Rect(300 - 100, 500 - self.tank_level * 400, 200, 400*self.tank_level))
+        pygame.draw.line(window, (255, 0, 0), (300 - 120, 500 - self.control_point * 400), (300+120, 500 - self.control_point * 400),8)
+
+    def event_handler(self, mouse_position, event_type):
+        if event_type == pygame.MOUSEBUTTONDOWN:
+            if 300 - 120 - 2 <= mouse_position[0] <= 300+120+2 and \
+                    500 - self.control_point * 400 - 4 <= mouse_position[1] <= 500 - self.control_point * 400 + 4:
+                self.pressed = True
+        elif event_type == pygame.MOUSEBUTTONUP:
+            self.pressed = False
+            self.frame_counter = 0
+            self.selecting_control_point = False
+
+
 class Application:
     def __init__(self, window):
         self.width = window.get_width()
@@ -27,7 +69,6 @@ class Application:
         self.action_applied = 0.0
         self.running = True
 
-        self.tank = WaterTank()
         self.controller = None
         self.simulation_results = None
         self.simulation_finished = False
@@ -38,8 +79,16 @@ class Application:
         self.elapsed_time = 0
         self.elapsed_time_s = 0.0
 
-        self.sprites = {
-            'menu_item_idle': pygame.image.load(path.join("Assets/button_yellow", "button_plain.png")).convert_alpha(),
+        sprites = {
+            'arrow_left': pygame.image.load(
+                path.join("Assets/button_yellow", "button_arrow_left.png")).convert_alpha(),
+            'arrow_left_pressed': pygame.image.load(
+                path.join("Assets/button_hover", "button_arrow_left_hover.png")).convert_alpha(),
+            'settings': pygame.image.load(
+                path.join("Assets/button_yellow", "button_setting.png")).convert_alpha(),
+            'settings_pressed': pygame.image.load(path.join("Assets/button_hover", "button_setting_hover.png")).convert_alpha(),
+            'menu_item_idle': pygame.image.load(
+                path.join("Assets/button_yellow", "button_plain.png")).convert_alpha(),
             'menu_item_hover': pygame.image.load(
                 path.join("Assets/button_hover", "button_plain_hover.png")).convert_alpha(),
             'run_idle': pygame.image.load(path.join("Assets/button_yellow", "button_arrow_top.png")).convert_alpha(),
@@ -63,13 +112,16 @@ class Application:
             'panel': pygame.image.load(
                 path.join("Assets", "painel.png")).convert_alpha()
         }
+
         buttons = {
-            'run_simulation': gui.PushButton([195, 100-45-10], [45, 45], [self.sprites['run_idle'], self.sprites['run_pressed']]),
-            'play': gui.PushButton([195+55, 100-45-10], [45, 45], [self.sprites['play_idle'], self.sprites['play_pressed']]),
-            'restart': gui.PushButton([195+110, 100-45-10], [45, 45], [self.sprites['restart_idle'], self.sprites['restart_pressed']]),
-            'pause': gui.PushButton([195+55, 100-45-10], [45, 45], [self.sprites['stop_idle'], self.sprites['stop_pressed']]),
-            'save_data': gui.PushButton([195+165, 100-45-10], [45, 45], [self.sprites['save_idle'], self.sprites['save_pressed']]),
+            'settings': gui.PushButton([560, 15], [30, 30], [sprites['settings'], sprites['settings_pressed']]),
+            'run_simulation': gui.PushButton([195, 100-45-10], [45, 45], [sprites['run_idle'], sprites['run_pressed']]),
+            'play': gui.PushButton([195+55, 100-45-10], [45, 45], [sprites['play_idle'], sprites['play_pressed']]),
+            'restart': gui.PushButton([195+110, 100-45-10], [45, 45], [sprites['restart_idle'], sprites['restart_pressed']]),
+            'pause': gui.PushButton([195+55, 100-45-10], [45, 45], [sprites['stop_idle'], sprites['stop_pressed']]),
+            'save_data': gui.PushButton([195+165, 100-45-10], [45, 45], [sprites['save_idle'], sprites['save_pressed']]),
         }
+        buttons['settings'].connect_function(self.open_settings)
         buttons['run_simulation'].connect_function(self.start_simulation)
         buttons['play'].connect_function(self.play_simulation)
         buttons['pause'].connect_function(self.pause_simulation)
@@ -79,8 +131,8 @@ class Application:
         buttons['pause'].disable()
 
         panels = {
-            'time_panel': gui.Panel([10, 10], [80, 30], self.sprites['panel'], border=gui.Border(1, gui.Color.BLACK), text=gui.Text('00:000', 16, gui.Color.BLACK)),
-            'controller_select': gui.Panel([10, 100], [165, 30], self.sprites['panel'], border=gui.Border(1, gui.Color.BLACK), text=gui.Text('Escolha o controlador', 16, gui.Color.BLACK))
+            'time_panel': gui.Panel([10, 10], [80, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK), text=gui.Text('00:000', 16, gui.Color.BLACK)),
+            'controller_select': gui.Panel([10, 100], [165, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK), text=gui.Text('Escolha o controlador', 16, gui.Color.BLACK))
         }
 
         progress_bars = {
@@ -88,7 +140,7 @@ class Application:
         }
 
         dropdown_menu = {
-            'controller_select': gui.DropdownMenu([50, 140], [80, 30], [self.sprites['menu_item_idle'], self.sprites['menu_item_hover']], border=gui.Border(1, (0, 0, 0)), parent=None),
+            'controller_select': gui.DropdownMenu([50, 140], [80, 30], [sprites['menu_item_idle'], sprites['menu_item_hover']], border=gui.Border(1, (0, 0, 0)), parent=None),
         }
 
         text_edits = {}
@@ -101,8 +153,8 @@ class Application:
             current_y = 100
             for name in controller['variables']:
                 default_value = str(controller['variables'][name])
-                new_panel = gui.Panel([450, current_y], [35, 30], self.sprites['panel'], border=gui.Border(1, gui.Color.BLACK),text=gui.Text(name.capitalize(), 16, gui.Color.BLACK))
-                new_edit = gui.TextEdit([495, current_y], [60, 30], self.sprites['panel'], border=gui.Border(1, gui.Color.BLACK), text=gui.Text(default_value, 16, gui.Color.BLACK))
+                new_panel = gui.Panel([450, current_y], [35, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),text=gui.Text(name.capitalize(), 16, gui.Color.BLACK))
+                new_edit = gui.TextEdit([495, current_y], [60, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK), text=gui.Text(default_value, 16, gui.Color.BLACK))
                 if current_y > 100:
                     new_panel.disable()
                     new_edit.disable()
@@ -112,52 +164,98 @@ class Application:
 
         dropdown_menu['controller_select'].connect_on_item_select(self.change_custom_controller)
 
-        self.widgets = gui.Window(buttons, panels, text_edits, progress_bars, dropdown_menu)
+        self.tankWidget = WaterTankWidget([0, 0, 0])
+
+        customs = {
+            'tank': self.tankWidget
+        }
+
+        self.simulation_view = gui.Window(buttons, panels, text_edits, progress_bars, dropdown_menu, customs)
+        self.simulation_view.enable()
+
+
+        center_x = 350
+        text_edits = {
+            'dt': gui.TextEdit([center_x, 100], [65, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),
+                                text=gui.Text('0.1', 16, gui.Color.BLACK)),
+            'tank_height': gui.TextEdit([center_x, 145], [65, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),
+                                text=gui.Text('1.0', 16, gui.Color.BLACK)),
+            'tank_area': gui.TextEdit([center_x, 190], [65, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),
+                                text=gui.Text('0.09', 16, gui.Color.BLACK)),
+            'tank_escape_area': gui.TextEdit([center_x, 235], [65, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),
+                                text=gui.Text('0.001', 16, gui.Color.BLACK)),
+            'max_incoming_flow': gui.TextEdit([center_x, 280], [65, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),
+                                text=gui.Text('20', 16, gui.Color.BLACK)),
+        }
+
+        center_x = center_x - 160
+        panels = {
+            'dt': gui.Panel([center_x, 100], [150, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),text=gui.Text('dt (s)', 16, gui.Color.BLACK)),
+            'tank_height': gui.Panel([center_x, 145], [150, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),text=gui.Text('Tank Height (m)', 16, gui.Color.BLACK)),
+            'tank_area': gui.Panel([center_x, 190], [150, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),text=gui.Text('Tank Area (m^2)', 16, gui.Color.BLACK)),
+            'tank_escape_area': gui.Panel([center_x, 235], [150, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),text=gui.Text('Escape Area (m^2)', 16, gui.Color.BLACK)),
+            'max_incoming_flow': gui.Panel([center_x, 280], [150, 30], sprites['panel'], border=gui.Border(1, gui.Color.BLACK),text=gui.Text('Max Flow (m^3/s)', 16, gui.Color.BLACK)),
+        }
+
+        buttons = {
+            'go-back': gui.PushButton([10, 15], [45, 45], [sprites['arrow_left'], sprites['arrow_left_pressed']]),
+        }
+        buttons['go-back'].connect_function(self.return_to_simulation)
+
+        self.configuration_view = gui.Window(buttons, panels, text_edits, {}, {})
 
     def run(self):
         timer = pygame.time.Clock()
         while self.running:
             pygame.draw.rect(self.window, (100, 200, 80), pygame.Rect(0, 0, self.width, self.height))
             self.event_handler()
-            dt = timer.tick(60)# Recebe o tempo que passou entre frames em ms.
+            dt = timer.tick(60)
 
             if self.simulation_finished:
                 if self.simulation_displaying:
                     self.set_time_text(get_elapsed_time_string(self.elapsed_time))
                     self.current_simulation_index = get_closest_index(self.simulation_results.time, self.elapsed_time_s)
-                    self.tank_level = self.simulation_results.height[self.current_simulation_index]
+                    self.tankWidget.tank_level = self.simulation_results.height[self.current_simulation_index]
                     self.elapsed_time += dt
                     self.elapsed_time_s += dt / 1000
-            self.draw_tank()
-            self.widgets.show(self.window)
+            self.simulation_view.show(self.window, pygame.mouse.get_pos())
+            self.configuration_view.show(self.window, pygame.mouse.get_pos())
 
             pygame.display.update()
+
+    def open_settings(self):
+        self.simulation_view.disable()
+        self.configuration_view.enable()
+
+    def return_to_simulation(self):
+        self.simulation_view.enable()
+        self.configuration_view.disable()
 
     def start_simulation(self):
         if not self.simulation_running:
             args = {}
             for name in self.custom_controllers[self.custom_controller_id]['variables']:
                 key = name.capitalize()+self.custom_controllers[self.custom_controller_id]['name']
-                value = self.widgets.text_edits[key].get_text_as_float()
+                value = self.simulation_view.text_edits[key].get_text_as_float()
                 args[name] = value
 
             self.controller = self.custom_controllers[self.custom_controller_id]['class'](**args)
 
-            simulation_thread = threading.Thread(target=self.tank.simulate, args=(10, 0.001, 0, self.controller, 0.7,
+            simulation_thread = threading.Thread(target=self.tankWidget.tank.simulate, args=(10, 0.001, 0, self.controller, self.tankWidget.control_point,
                      self.on_simulation_finished, None,
                      self.update_progress_bar, None,
                      False,))
             simulation_thread.start()
             self.simulation_finished = False
             self.simulation_running = True
-            self.widgets.buttons['play'].enable()
-            self.widgets.buttons['pause'].disable()
+            self.simulation_view.buttons['play'].enable()
+            self.simulation_view.buttons['pause'].disable()
 
     def play_simulation(self):
         if self.simulation_finished:
             self.simulation_displaying = True
-            self.widgets.buttons['pause'].enable()
-            self.widgets.buttons['play'].disable()
+            self.simulation_view.buttons['pause'].enable()
+            self.simulation_view.buttons['play'].disable()
 
     def on_simulation_finished(self, results):
         self.simulation_results = results
@@ -168,30 +266,28 @@ class Application:
 
     def update_progress_bar(self, percentage):
         value = percentage/100.0
-        self.widgets.progress_bars['progresso'].set_value(value)
+        self.simulation_view.progress_bars['progresso'].set_value(value)
 
     def set_time_text(self, txt):
-        self.widgets.panels['time_panel'].set_text(txt)
+        self.simulation_view.panels['time_panel'].set_text(txt)
 
     def pause_simulation(self):
         if self.simulation_displaying:
             self.simulation_displaying = False
-            self.widgets.buttons['play'].enable()
-            self.widgets.buttons['pause'].disable()
-        # self.root.deiconify()
+            self.simulation_view.buttons['play'].enable()
+            self.simulation_view.buttons['pause'].disable()
 
     def reset(self):
-        self.tank_level = 0.0
+        self.tankWidget.tank_level = 0.0
         self.elapsed_time = 0
         self.elapsed_time_s = 0.0
         self.simulation_displaying = False
         self.simulation_running = False
         self.set_time_text('00:000')
 
-        self.widgets.buttons['play'].enable()
-        self.widgets.buttons['pause'].disable()
+        self.simulation_view.buttons['play'].enable()
+        self.simulation_view.buttons['pause'].disable()
 
-    #TODO
     def save_simulation_results(self):
         if self.simulation_finished:
             file = g.filesavebox('Save Simulation Results')
@@ -203,7 +299,7 @@ class Application:
         units = ['', ' (m)', ' (m)', '']
         max_time = self.simulation_results.time[data_size-1]
 
-        wb = openpyxl.Workbook()
+        wb = Workbook()
         sheet = wb.active
         sheet.append(headers)
 
@@ -242,36 +338,22 @@ class Application:
             for name in controller['variables']:
                 key = name.capitalize()+controller['name']
                 if index != item_id:
-                    self.widgets.text_edits[key].disable()
-                    self.widgets.panels[key].disable()
+                    self.simulation_view.text_edits[key].disable()
+                    self.simulation_view.panels[key].disable()
                 else:
-                    self.widgets.text_edits[key].enable()
-                    self.widgets.panels[key].enable()
+                    self.simulation_view.text_edits[key].enable()
+                    self.simulation_view.panels[key].enable()
 
     def event_handler(self):
         mouse_pos = pygame.mouse.get_pos()
-        for event in pygame.event.get():
+        events = pygame.event.get()
+        
+        for event in events:
             if event.type == pygame.QUIT:
                 self.close()
 
-            for button in self.widgets.buttons.values():
-                button.event_handler(mouse_pos, event.type)
-            for menu in self.widgets.dropdown_menus.values():
-                menu.event_handler(mouse_pos, event.type)
-                for button in menu.items:
-                    button.event_handler(mouse_pos, event.type)
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                for text_edit in self.widgets.text_edits.values():
-                    text_edit.click_handler(mouse_pos)
-            if event.type == pygame.KEYDOWN:
-                for text_edit in self.widgets.text_edits.values():
-                    text_edit.key_handler(event)
-
-    def draw_tank(self):
-        pygame.draw.rect(self.window, (0, 0, 0), pygame.Rect(300 - 100 - 2, 100 - 2, 204, 404))
-        pygame.draw.rect(self.window, (122, 122, 122), pygame.Rect(300-100, 100, 200, 400))
-        pygame.draw.rect(self.window, (0, 100, 255), pygame.Rect(300 - 100, 500 - self.tank_level * 400, 200, self.tank_level * 400))
-        pygame.draw.line(self.window, (255, 0, 0), (300 - 120, 500 - 0.7 * 400), (300+120, 500 - 0.7 * 400))
+            self.simulation_view.event_handler(event, mouse_pos)
+            self.configuration_view.event_handler(event, mouse_pos)
 
     def close(self):
         self.running = False

@@ -574,30 +574,61 @@ class DropdownMenu(Widget):
 
 class Window:
 
-    def __init__(self, buttons, panels, text_edits, progress_bars, dropdown_menus):
+    def __init__(self, buttons, panels, text_edits, progress_bars, dropdown_menus, customs=None):
         self.text_edits = text_edits
         self.buttons = buttons
         self.panels = panels
         self.progress_bars = progress_bars
         self.dropdown_menus = dropdown_menus
+        self.customs = customs
         self.frame_counter = 0
         self.wait_complete = False
-
-    def show(self, window):
-        for button in self.buttons.values():
-            button.show(window)
-        for panel in self.panels.values():
-            panel.show(window)
-        for text_edit in self.text_edits.values():
-            text_edit.show(window)
-        for progress_bar in self.progress_bars.values():
-            progress_bar.show(window)
-        for dropdown_menu in self.dropdown_menus.values():
-            dropdown_menu.show(window)
-        if not self.wait_complete:
-            self.frame_counter += 1
-            if self.frame_counter == 3:
-                self.wait_complete = True
+        self.active = False
+        
+    def disable(self):
+        self.active = False
+        
+    def enable(self):
+        self.active = True
+    
+    def event_handler(self, event, mouse_pos):
+        if self.active:
+            for button in self.buttons.values():
+                button.event_handler(mouse_pos, event.type)
+            for menu in self.dropdown_menus.values():
+                menu.event_handler(mouse_pos, event.type)
+                for button in menu.items:
+                    button.event_handler(mouse_pos, event.type)
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                for text_edit in self.text_edits.values():
+                    text_edit.click_handler(mouse_pos)
+            if event.type == pygame.KEYDOWN:
+                for text_edit in self.text_edits.values():
+                    text_edit.key_handler(event)
+            if self.customs:
+                for custom in self.customs.values():
+                    custom.event_handler(mouse_pos, event.type)
+    
+    def show(self, window, mouse_pos):
+        if self.active:
+            for button in self.buttons.values():
+                button.show(window)
+            for panel in self.panels.values():
+                panel.show(window)
+            for text_edit in self.text_edits.values():
+                text_edit.show(window)
+            for progress_bar in self.progress_bars.values():
+                progress_bar.show(window)
+            for dropdown_menu in self.dropdown_menus.values():
+                dropdown_menu.show(window)
+            if self.customs:
+                for custom in self.customs.values():
+                    custom.show(window, mouse_pos)
+            if not self.wait_complete:
+                self.frame_counter += 1
+                if self.frame_counter == 3:
+                    self.wait_complete = True
+            
 
 
 def determine_text_center(self):
