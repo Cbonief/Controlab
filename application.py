@@ -3,7 +3,7 @@ from os import path  # Biblioteca para direcionamento do endereço dos arquiv
 from bisect import bisect_left
 import threading
 import easygui as g
-import openpyxl
+
 from openpyxl.chart import Reference, ScatterChart, Series
 
 import pygame  # Biblioteca para a janela do jogo e evento de mouse.
