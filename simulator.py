@@ -107,11 +107,11 @@ class DynamicSystem(ABC):
             return self.simulation_results
 
     def simulate(self, total_time=10, dt=0.001, x0=0,
-                 controller=None, control_point=0.7,
-                 onFinished=None, args=None,
-                 progressCallback=None, callbackArgs=None,
-                 returnValues=False,
-                 ):
+                    controller=None, control_point=0.7,
+                    onFinished=None, args=None,
+                    progressCallback=None, callbackArgs=None,
+                    returnValues=False,
+                    ):
 
         print(control_point)
         # Control Variables
@@ -240,7 +240,7 @@ class WaterTank(DynamicSystem):
     g = 9.81
 
     def __init__(self, max_height=1, tank_area=0.09, tank_escape_area=0.001 * np.pi, incoming_max_velocity=20,
-                 input_area=0.0004 * np.pi):
+                    input_area=0.0004 * np.pi):
         DynamicSystem.__init__(self, {
             'x': [0, max_height]
         })

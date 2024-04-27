@@ -2,7 +2,6 @@
 from os import path  # Biblioteca para direcionamento do endereço dos arquiv
 from bisect import bisect_left
 import threading
-import easygui as g
 
 from openpyxl import Workbook
 from openpyxl.chart import Reference, ScatterChart, Series
