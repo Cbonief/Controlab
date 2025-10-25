@@ -1,5 +1,4 @@
-global Controller
-global AuxiliaryDictionary
+from controller import Controller
 
 
 class OnOff(Controller):
@@ -13,6 +12,3 @@ class OnOff(Controller):
             return 0
         else:
             return 1
-
-
-AuxiliaryDictionary['class'] = OnOff

@@ -1,5 +1,4 @@
-global Controller
-global AuxiliaryDictionary
+from controller import Controller
 
 
 class OnOffHold(Controller):
@@ -23,6 +22,3 @@ class OnOffHold(Controller):
             else:
                 self._parity = 0
                 return 1
-
-
-AuxiliaryDictionary['class'] = OnOffHold

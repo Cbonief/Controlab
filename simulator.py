@@ -38,146 +38,6 @@ class DynamicSystem(ABC):
     def dx_dt(self, value, action=None):
         return self.limit(self._dx_dt(value, action), self.limits['dx_dt'])
 
-    def simulate_45(self, total_time=10, dt=0.001, x0=0, tol=1e-6,
-                    controller=None, control_point=0.7,
-                    onFinished=None, args=None,
-                    progressCallback=None, callbackArgs=None,
-                    returnValues=False,
-                    ):
-
-        # Control Variables
-        control_action = 0
-        control_timer = 0
-
-        self.limits['dt'] = [1e-12, controller.ts]
-
-        # Simulation Variables
-        xn = x0
-        x = LinkedList(x0)
-        time = LinkedList(0)
-        error = LinkedList(control_point - xn)
-        action = LinkedList(0)
-
-        elapsed_time = 0
-
-        # Progress
-        last_percentage = 0
-
-        while elapsed_time < total_time:
-            # Add dt to the elapsed time, and the control timer.
-            elapsed_time += dt
-            control_timer += dt
-
-            # Calculates the current value using the Dormand Prince Method
-            xn, dt = self.dormand_prince(lambda aux: self.dx_dt(aux, control_action), xn, dt, tol)
-            xn = self.limit(xn, self.limits['x'])
-
-            # Assign the variables to their respective array.
-            x.append(xn)
-            time.append(elapsed_time)
-            error.append(control_point - xn)
-            action.append(control_action)
-
-            # Calculate the Control Action if the system has a controller.
-            if controller:
-                if control_timer >= controller.ts:
-                    control_timer -= controller.ts
-                    control_action = controller.calculate_action(x.np_array(), time.np_array(), control_point)
-            else:
-                control_action = 0
-
-            # Progress Callback.
-            percentage = int(100 * elapsed_time / total_time)
-            if percentage != last_percentage:
-                last_percentage = percentage
-                if progressCallback:
-                    if callbackArgs:
-                        progressCallback(percentage, callbackArgs)
-                    else:
-                        progressCallback(percentage)
-
-        self.simulation_results = SimulationResults(time.np_array(), x.np_array(), error.np_array(), action.np_array())
-        if onFinished:
-            if args:
-                onFinished(self.simulation_results, args)
-            else:
-                onFinished(self.simulation_results)
-
-        if returnValues:
-            return self.simulation_results
-
-    def simulate(self, total_time=10, dt=0.001, x0=0,
-                    controller=None, control_point=0.7,
-                    onFinished=None, args=None,
-                    progressCallback=None, callbackArgs=None,
-                    returnValues=False,
-                    ):
-
-        print(control_point)
-        # Control Variables
-        control_action = 0
-        control_timer = 0
-
-        # Simulation Variables
-        nit = int(np.ceil(total_time / dt))
-        curr_x = x0
-        x = np.zeros(nit)
-        x[0] = x0
-        time = np.zeros(nit)
-        error = np.zeros(nit)
-        error[0] = control_point - curr_x
-        action = np.zeros(nit)
-        elapsed_time_string = [''] * nit
-        elapsed_time_string[0] = '0:00'
-
-        elapsed_time = 0
-
-        # Progress
-        last_percentage = 0
-
-        for i in range(1, nit):
-            # Calculates the current value using the Runge Kutta Method.
-            curr_x = self.runge_kutta(lambda aux: self.dx_dt(aux, control_action), curr_x, dt)
-            curr_x = self.limit(curr_x, self.limits['x'])
-
-            # Add dt to the elapsed time, and the control timer.
-            elapsed_time += dt
-            control_timer += dt
-
-            # Assign the variables to their respective array.
-            x[i] = curr_x
-            time[i] = elapsed_time
-            error[i] = control_point - curr_x
-            action[i] = control_action
-
-            # Calculate the Control Action if the system has a controller.
-            if controller:
-                if control_timer >= controller.ts:
-                    control_timer -= controller.ts
-                    control_action = controller.calculate_action(x[:i], time[:i], control_point)
-            else:
-                control_action = 0
-
-            # Progress Callback.
-            percentage = int(100 * i / nit)
-            if percentage != last_percentage:
-                last_percentage = percentage
-                if progressCallback:
-                    if callbackArgs:
-                        progressCallback(percentage, callbackArgs)
-                    else:
-                        progressCallback(percentage)
-
-        self.simulation_results = SimulationResults(time, x, error, action)
-        if onFinished:
-            if args:
-                onFinished(self.simulation_results, args)
-            else:
-                onFinished(self.simulation_results)
-
-        if returnValues:
-            return self.simulation_results
-
     @abstractmethod
     def _dx_dt(self, value, action=None):
         pass
@@ -193,6 +53,99 @@ class DynamicSystem(ABC):
         x_n1 *= dt / 6
         x_n1 += xn
         return x_n1
+
+    def _rk_stepper(self, derivative_func, xn, dt, **kwargs):
+        """Fixed-step Runge-Kutta stepper."""
+        xn_1 = self.runge_kutta(derivative_func, xn, dt)
+        return xn_1, dt
+
+    def _dp_stepper(self, derivative_func, xn, dt, **kwargs):
+        """Adaptive-step Dormand-Prince stepper."""
+        tol = kwargs.get('tol', 1e-6)
+        xn_1, dt_new = self.dormand_prince(derivative_func, xn, dt, tol)
+        return xn_1, dt_new
+
+    def _generic_simulate(self, stepper, total_time, dt, x0, controller, control_point,
+                          onFinished, args, progressCallback, callbackArgs, returnValues, **kwargs):
+        """Generic simulation loop."""
+        # Control Variables
+        control_action = 0
+        control_timer = 0
+
+        # Simulation Variables
+        xn = x0
+        time = [0.0]
+        x = [x0]
+        error = [control_point - x0]
+        action = [0.0]
+
+        elapsed_time = 0.0
+        last_percentage = 0
+
+        while elapsed_time < total_time:
+            # Define the derivative function for this step
+            derivative_func = lambda val: self.dx_dt(val, control_action)
+
+            # Perform one integration step
+            xn, dt = stepper(derivative_func, xn, dt, **kwargs)
+            xn = self.limit(xn, self.limits['x'])
+
+            # Update time and timers
+            elapsed_time += dt
+            control_timer += dt
+
+            # Store results
+            time.append(elapsed_time)
+            x.append(xn)
+            error.append(control_point - xn)
+            action.append(control_action)
+
+            # Calculate the Control Action if the system has a controller.
+            if controller:
+                if control_timer >= controller.ts:
+                    control_timer -= controller.ts
+                    # Pass numpy arrays to the controller for consistency
+                    control_action = controller.calculate_action(np.array(x), np.array(time), control_point)
+            else:
+                control_action = 0
+
+            # Progress Callback.
+            percentage = int(100 * elapsed_time / total_time)
+            if percentage > last_percentage: # Use > to avoid multiple calls for the same percentage
+                last_percentage = percentage
+                if progressCallback:
+                    progress_args = (percentage,) + (callbackArgs if callbackArgs is not None else ())
+                    progressCallback(*progress_args)
+
+        # Convert results to numpy arrays and store them
+        self.simulation_results = SimulationResults(
+            time=np.array(time),
+            height=np.array(x),
+            error=np.array(error),
+            action=np.array(action)
+        )
+
+        # Finalization callbacks
+        if onFinished:
+            on_finished_args = (self.simulation_results,) + (args if args is not None else ())
+            onFinished(*on_finished_args)
+
+        if returnValues:
+            return self.simulation_results
+
+    def simulate(self, total_time=10, dt=0.001, x0=0, controller=None, control_point=0.7,
+                 onFinished=None, args=None, progressCallback=None, callbackArgs=None, returnValues=False):
+        """Simulates the system using a fixed-step Runge-Kutta method."""
+        return self._generic_simulate(self._rk_stepper, total_time, dt, x0, controller, control_point,
+                                      onFinished, args, progressCallback, callbackArgs, returnValues)
+
+    def simulate_45(self, total_time=10, dt=0.001, x0=0, tol=1e-6, controller=None, control_point=0.7,
+                    onFinished=None, args=None, progressCallback=None, callbackArgs=None, returnValues=False):
+        """Simulates the system using an adaptive-step Dormand-Prince (ODE45) method."""
+        if controller:
+            self.limits['dt'] = [1e-12, controller.ts]
+        return self._generic_simulate(self._dp_stepper, total_time, dt, x0, controller, control_point,
+                                      onFinished, args, progressCallback, callbackArgs, returnValues, tol=tol)
 
     def dormand_prince(self, derivative_function, xn, dt, tol=1e-6):
         k1 = derivative_function(xn)
@@ -249,48 +202,7 @@ class WaterTank(DynamicSystem):
         self._k2 = incoming_max_velocity * input_area / tank_area
 
     def _dx_dt(self, value, action=None):
-        return self._k2 * action - self._k1 * np.sqrt(value)
-
-
-class LinkedList:
-
-    class Data:
-
-        def __init__(self, val, index=0):
-            self.val = val
-            self.index = index
-            self.next = None
-
-        def __hash__(self):
-            return self.index
-
-    def __init__(self, initial_data=None):
-        self.first = None
-        self.length = 0
-        self.last = None
-        self.Nodes = {}
-        if initial_data:
-            self.append(initial_data)
-
-    def append(self, data):
-        new_node = self.Data(data, self.length)
-        if self.last:
-            self.Nodes[self.last].next = new_node
-        self.Nodes[new_node] = new_node
-        if self.length == 0:
-            self.first = new_node
-        elif self.length == 1:
-            self.first.next = new_node
-        self.last = new_node
-        self.length += 1
-
-    def np_array(self):
-        array = np.zeros(self.length)
-        curr = self.Nodes[self.first]
-        for i in range(self.length):
-            array[i] = curr.val
-            curr = curr.next
-        return array
+        return self._k2 * action - self._k1 * np.sqrt(max(0, value)) # Avoid sqrt of negative
 
 
 # class InvertedPendulum:

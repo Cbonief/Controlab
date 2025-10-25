@@ -1,5 +1,4 @@
-global Controller
-global AuxiliaryDictionary
+from controller import Controller
 
 
 class PID(Controller):
@@ -20,6 +19,3 @@ class PID(Controller):
         error_derivative = (self._error - last_error) / self.ts
         control_action = max(self.Kp * self._error + error_derivative * self.Kv + self._integral_error * self.Ki, 0)
         return min(1, control_action)
-
-
-AuxiliaryDictionary['class'] = PID
